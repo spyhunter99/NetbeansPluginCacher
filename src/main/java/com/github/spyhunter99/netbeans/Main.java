@@ -154,6 +154,7 @@ public class Main {
 
     private void run(String[] args) throws Exception {
 
+        long now = System.currentTimeMillis();
         String indexUrl = null;
         //certified
         indexUrl = "http://updates.netbeans.org/netbeans/updates/8.2/uc/final/certified/catalog.xml.gz";
@@ -175,45 +176,25 @@ public class Main {
         System.out.println("Getting index for Community Plug-in Portal update center:");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
-        while (!queue.isEmpty()) {
-            DownloadJob remove = queue.remove();
-            if (remove != null) {
-                downloadFile(remove.URL, remove.destination);
-            }
-        }
+      
         //netbeans distro
         indexUrl = "http://updates.netbeans.org/netbeans/updates/8.2/uc/final/distribution/catalog.xml.gz";
         System.out.println("Getting index for netbeans distribution updates");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
-        while (!queue.isEmpty()) {
-            DownloadJob remove = queue.remove();
-            if (remove != null) {
-                downloadFile(remove.URL, remove.destination);
-            }
-        }
+       
         //plugin portal
         System.out.println("Getting index for plugin portal");
         indexUrl = "http://plugins.netbeans.org/nbpluginportal/updates/8.2/catalog.xml.gz";
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
-        while (!queue.isEmpty()) {
-            DownloadJob remove = queue.remove();
-            if (remove != null) {
-                downloadFile(remove.URL, remove.destination);
-            }
-        }
+        
         //dev 
         indexUrl = "http://deadlock.netbeans.org/hudson/job/nbms-and-javadoc/lastStableBuild/artifact/nbbuild/nbms/updates.xml.gz";
         System.out.println("Getting index for development update center");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
-        while (!queue.isEmpty()) {
-            DownloadJob remove = queue.remove();
-            if (remove != null) {
-                downloadFile(remove.URL, remove.destination);
-            }
-        }
+       
         for (int i = 0; i < 4; i++) {
             new Thread(new Downloader()).start();
         }
@@ -227,6 +208,7 @@ public class Main {
         if (downloadErrors > 0) {
             System.out.println("Download error usually indicate either a network problem OR the netbeans index points to files that do not exist, were never published or were removed.");
         }
+        System.out.println("finished in " + (System.currentTimeMillis()-now) + "ms");
     }
 
     public class Downloader implements Runnable {
@@ -286,7 +268,7 @@ public class Main {
             downloadSuccess++;
         } catch (Exception ex) {
             downloadErrors++;
-            System.out.println("failed!" + ex.getMessage());
+            System.out.println("failed!" + ex.getMessage() + ex.getClass().getCanonicalName());
         }
     }
 
