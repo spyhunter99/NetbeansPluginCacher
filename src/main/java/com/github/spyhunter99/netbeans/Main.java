@@ -30,38 +30,63 @@ import org.netbeans.ModuleUpdates;
  */
 public class Main {
 
+    int downloadSuccess = 0;
+    int downloadErrors = 0;
+    int downloadSkipped = 0;
+    JAXBContext jc = null;
+    XMLInputFactory xif = null;
+
+    public Main() throws Exception {
+        jc = JAXBContext.newInstance(ModuleUpdates.class);
+
+        xif = XMLInputFactory.newFactory();
+        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+    }
+
     public static void main(String[] args) throws Exception {
         new Main().run(args);
     }
 
-    private void process(Object get, String baseUrl, File dl) {
+    private void process(Object get, String baseUrl, File dl, File syncFolder) throws Exception {
         if (get instanceof Module) {
             Module m = (Module) get;
-            String distro = baseUrl + m.getDistribution();
             DownloadJob job = new DownloadJob();
-            job.URL = distro;
-            job.destination = dl.getAbsolutePath() + "/" + m.getDistribution();
+            if (!m.getDistribution().startsWith("http")) {
+                String distro = baseUrl + m.getDistribution();
+                job.destination = dl.getAbsolutePath() + "/" + m.getDistribution();
+                job.URL = distro;
+            } else {
+                job.URL = m.getDistribution();
+                String path = new URL(job.URL).getPath();
+                job.destination = syncFolder.getAbsolutePath() + path;
+            }
+
             queue.add(job);
         } else if (get instanceof ModuleGroup) {
             ModuleGroup group = (ModuleGroup) get;
             for (int k = 0; k < group.getModuleGroupOrModule().size(); k++) {
-                process(group.getModuleGroupOrModule().get(k), baseUrl, dl);
+                process(group.getModuleGroupOrModule().get(k), baseUrl, dl, syncFolder);
             }
         } else if (get instanceof License) {
             License l = (License) get;
-            DownloadJob job = new DownloadJob();
-            job.URL = baseUrl + l.getUrl();
-            job.destination = dl.getAbsolutePath() + "/" + l.getUrl();
-            queue.add(job);
+            if (((License) get).getUrl() != null) {
+                DownloadJob job = new DownloadJob();
+                if (l.getUrl().startsWith("http")) {
+                    job.URL = l.getUrl();
+                    String path = new URL(job.URL).getPath();
+                    job.destination = syncFolder.getAbsolutePath() + path;
+                } else {
+                    //relative url
+                    job.URL = baseUrl + l.getUrl();
+                    job.destination = dl.getAbsolutePath() + "/" + l.getUrl();
+                }
+                queue.add(job);
+            }
 
         }
     }
 
     private void start(String indexUrl) throws Exception {
-        JAXBContext jc = JAXBContext.newInstance(ModuleUpdates.class);
-
-        XMLInputFactory xif = XMLInputFactory.newFactory();
-        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
 
         //download the index file, parse it, then download all of the files
         File outputDir = new File("sync");
@@ -92,7 +117,7 @@ public class Main {
             //ModuleUpdates unmarshal = JAXB.unmarshal(new File(workingDir, "catalog.xml"), ModuleUpdates.class);
             for (int i = 0; i < unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().size(); i++) {
                 Object get = unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().get(i);
-                process(get, baseUrl, dl);
+                process(get, baseUrl, dl, outputDir);
 
             }
             //read index
@@ -102,7 +127,7 @@ public class Main {
             //unpack
             String baseUrl = indexUrl.replace(indexFileName, "");   //download url minux the filename
 
-            XMLStreamReader xsr = xif.createXMLStreamReader(new StreamSource(new File(workingDir, "catalog.xml")));
+            XMLStreamReader xsr = xif.createXMLStreamReader(new StreamSource(new File(outputDir.getAbsolutePath() + path + indexFileName)));
 
             Unmarshaller unmarshaller = jc.createUnmarshaller();
             ModuleUpdates unmarshal = (ModuleUpdates) unmarshaller.unmarshal(xsr);
@@ -110,7 +135,7 @@ public class Main {
             //ModuleUpdates unmarshal = JAXB.unmarshal(new File(workingDir, "catalog.xml"), ModuleUpdates.class);
             for (int i = 0; i < unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().size(); i++) {
                 Object get = unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().get(i);
-                process(get, baseUrl, dl);
+                process(get, baseUrl, dl, outputDir);
 
             }
             //read index
@@ -129,47 +154,13 @@ public class Main {
 
     private void run(String[] args) throws Exception {
 
-        /* JAXBContext jc = JAXBContext.newInstance(ModuleUpdates.class);
-
-        XMLInputFactory xif = XMLInputFactory.newFactory();
-        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-
-        //download the index file, parse it, then download all of the files
-        File outputDir = new File("sync");
-        outputDir.mkdirs();
-        File workingDir = new File("temp");
-        workingDir.mkdirs();
-         */
         String indexUrl = null;
         //certified
         indexUrl = "http://updates.netbeans.org/netbeans/updates/8.2/uc/final/certified/catalog.xml.gz";
 
+        System.out.println("Getting index for certified plugins");
         start(indexUrl);
 
-        /*   
-        File dl = new File(outputDir, "/netbeans/updates/8.2/uc/final/certified/");
-        dl.mkdirs();
-
-        downloadIndexFile(indexUrl, outputDir.getAbsolutePath() + "/netbeans/updates/8.2/uc/final/certified/catalog.xml.gz");
-        if (indexUrl.endsWith(".gz")) {
-            //unpack
-            gunzipIt(outputDir.getAbsolutePath() + "/netbeans/updates/8.2/uc/final/certified/catalog.xml.gz", workingDir.getAbsolutePath() + "/catalog.xml");
-            String baseUrl = indexUrl.replace("catalog.xml.gz", "");
-
-            XMLStreamReader xsr = xif.createXMLStreamReader(new StreamSource(new File(workingDir, "catalog.xml")));
-
-            Unmarshaller unmarshaller = jc.createUnmarshaller();
-            ModuleUpdates unmarshal = (ModuleUpdates) unmarshaller.unmarshal(xsr);
-
-            //ModuleUpdates unmarshal = JAXB.unmarshal(new File(workingDir, "catalog.xml"), ModuleUpdates.class);
-            for (int i = 0; i < unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().size(); i++) {
-                Object get = unmarshal.getNotificationOrModuleGroupOrModuleOrLicenseOrError().get(i);
-                process(get, baseUrl, dl);
-
-            }
-            //read index
-            //enqueue all plugins
-        }*/
         System.out.println(queue.size() + " files to download");
         while (!queue.isEmpty()) {
             DownloadJob remove = queue.remove();
@@ -181,6 +172,7 @@ public class Main {
 //comm
 //most of these failed, need to investigate further
         indexUrl = "http://plugins.netbeans.org/nbpluginportal/files/nbms/pluginportal-update-center.xml";
+        System.out.println("Getting index for Community Plug-in Portal update center:");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
         while (!queue.isEmpty()) {
@@ -191,6 +183,7 @@ public class Main {
         }
         //netbeans distro
         indexUrl = "http://updates.netbeans.org/netbeans/updates/8.2/uc/final/distribution/catalog.xml.gz";
+        System.out.println("Getting index for netbeans distribution updates");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
         while (!queue.isEmpty()) {
@@ -200,6 +193,7 @@ public class Main {
             }
         }
         //plugin portal
+        System.out.println("Getting index for plugin portal");
         indexUrl = "http://plugins.netbeans.org/nbpluginportal/updates/8.2/catalog.xml.gz";
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
@@ -211,6 +205,7 @@ public class Main {
         }
         //dev 
         indexUrl = "http://deadlock.netbeans.org/hudson/job/nbms-and-javadoc/lastStableBuild/artifact/nbbuild/nbms/updates.xml.gz";
+        System.out.println("Getting index for development update center");
         start(indexUrl);
         System.out.println(queue.size() + " files to download");
         while (!queue.isEmpty()) {
@@ -219,6 +214,33 @@ public class Main {
                 downloadFile(remove.URL, remove.destination);
             }
         }
+        for (int i = 0; i < 4; i++) {
+            new Thread(new Downloader()).start();
+        }
+        while (!queue.isEmpty()) {
+            Thread.sleep(1000);
+        }
+        System.out.println("Done");
+        System.out.println("   Success " + downloadSuccess);
+        System.out.println("   Errors  " + downloadErrors);
+        System.out.println("   Skipped " + downloadSkipped);
+        if (downloadErrors > 0) {
+            System.out.println("Download error usually indicate either a network problem OR the netbeans index points to files that do not exist, were never published or were removed.");
+        }
+    }
+
+    public class Downloader implements Runnable {
+
+        @Override
+        public void run() {
+            while (!queue.isEmpty()) {
+                DownloadJob remove = queue.remove();
+                if (remove != null) {
+                    downloadFile(remove.URL, remove.destination);
+                }
+            }
+        }
+
     }
 
     /**
@@ -244,30 +266,31 @@ public class Main {
             gzis.close();
             out.close();
 
-            System.out.println("Done");
-
         } catch (IOException ex) {
             ex.printStackTrace();
         }
     }
 
-    public static void downloadFile(String url, String destination) throws Exception {
+    void downloadFile(String url, String destination) {
         if (new File(destination).exists()) {
+            downloadSkipped++;
             return;
         }
         System.out.println("Downloading " + url + " to " + destination);
         new File(destination).getParentFile().mkdirs();
-        try{
-        URL website = new URL(url);
-        ReadableByteChannel rbc = Channels.newChannel(website.openStream());
-        FileOutputStream fos = new FileOutputStream(destination);
-        fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
-        }catch (Exception ex) {
+        try {
+            URL website = new URL(url);
+            ReadableByteChannel rbc = Channels.newChannel(website.openStream());
+            FileOutputStream fos = new FileOutputStream(destination);
+            fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+            downloadSuccess++;
+        } catch (Exception ex) {
+            downloadErrors++;
             System.out.println("failed!" + ex.getMessage());
         }
     }
 
-    public static void downloadIndexFile(String url, String destination) throws Exception {
+    void downloadIndexFile(String url, String destination) throws Exception {
         URL website = new URL(url);
         ReadableByteChannel rbc = Channels.newChannel(website.openStream());
         FileOutputStream fos = new FileOutputStream(destination);
